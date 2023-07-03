@@ -21,7 +21,7 @@ def extract_keypoints(results):
 
 actions = ['aku', 'apa', 'bagaimana', 'berapa', 'di', 'dia', 'F', 'halo', 'I', 'J', 'K', 'kamu', 'kapan', 'ke', 'kita', 'makan', 'mana', 'mereka', 'minum', 'nama', 'R', 'saya', 'siapa', 'Y', 'yang', 'Z']
 
-model = load_model('realtimeV9.h5')
+model = load_model('realtimeV10.h5')
 
 sequence = []
 sentence = []
