@@ -1,17 +1,17 @@
+import cv2
 import numpy as np
 import streamlit as st
 import mediapipe as mp
 from tensorflow.keras.models import load_model
-import streamlit_webrtc as webrtc
 
 mp_holistic = mp.solutions.holistic  # Holistic model
 
 def mediapipe_detection(image, model):
-    image = image[:, :, ::-1]  # Convert BGR to RGB
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image.flags.writeable = False
     results = model.process(image)
     image.flags.writeable = True
-    image = image[:, :, ::-1]  # Convert RGB back to BGR
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
     return image, results
 
 def extract_keypoints(results):
@@ -28,9 +28,10 @@ sentence = []
 predictions = []
 threshold = 0.5
 
-st.set_page_config(layout="wide")
+cap = cv2.VideoCapture(0)
 
-def main():
+with mp_holistic.Holistic(min_detection_confidence=0.3, min_tracking_confidence=0.3) as holistic:
+    # Custom CSS style for the thin colored bar
     st.markdown(
         """
         <style>
@@ -38,75 +39,54 @@ def main():
             background-color: rgb(114, 134, 211);
             height: 35px;
         }
-        .video-container {
-            display: flex;
-            justify-content: center;
-        }
-        .video-placeholder {
-            width: 600px;
-            height: 400px;
-            object-fit: contain;
-        }
-        .text-container {
-            display: flex;
-            justify-content: center;
-            margin-top: 20px;
-        }
-        .text {
-            font-size: 24px;
-            font-weight: bold;
-            color: white;
-            text-align: center;
-            background-color: white;
-            height: 35px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
         </style>
         """,
         unsafe_allow_html=True
     )
 
+    # Add the thin colored bar before the st.title
     st.markdown('<div class="thin-bar"></div>', unsafe_allow_html=True)
+
     st.title("Sign Language Detection")
 
-    webrtc_ctx = webrtc.StreamlitWebRTC(
-        key="example",
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-    )
+    video_placeholder = st.empty()
 
-    if webrtc_ctx.video_receiver:
-        while True:
-            frame = webrtc_ctx.video_frame.copy()
+    while cap.isOpened():
+        ret, frame = cap.read()
 
-            image, results = mediapipe_detection(frame, holistic)
-            keypoints = extract_keypoints(results)
-            sequence.append(keypoints)
-            sequence = sequence[-30:]
+        image, results = mediapipe_detection(frame, holistic)
+        keypoints = extract_keypoints(results)
+        sequence.append(keypoints)
+        sequence = sequence[-30:]
 
-            if len(sequence) == 30:
-                res = model.predict(np.expand_dims(sequence, axis=0))[0]
+        if len(sequence) == 30:
+            res = model.predict(np.expand_dims(sequence, axis=0))[0]
 
-                confidence = res[np.argmax(res)]
-                predictions.append(np.argmax(res))
+            confidence = res[np.argmax(res)]
+            
+            predictions.append(np.argmax(res))
 
-                if np.unique(predictions[-10:])[0] == np.argmax(res):
-                    if res[np.argmax(res)] > threshold:
-                        if len(sentence) > 0:
-                            if actions[np.argmax(res)] != sentence[-1]:
-                                sentence.append(actions[np.argmax(res)])
-                        else:
+            if np.unique(predictions[-10:])[0] == np.argmax(res):
+                if res[np.argmax(res)] > threshold:
+                    if len(sentence) > 0:
+                        if actions[np.argmax(res)] != sentence[-1]:
                             sentence.append(actions[np.argmax(res)])
+                    else:
+                        sentence.append(actions[np.argmax(res)])
 
-                if len(sentence) > 5:
-                    sentence = sentence[-5:]
+            if len(sentence) > 5:
+                sentence = sentence[-5:]
 
-            text = ' '.join(sentence)
-            text_html = f'<div class="text"><span>{text}</span></div>'
-            st.markdown(text_html, unsafe_allow_html=True)
+        height, width, channels = image.shape
+        text_size, _ = cv2.getTextSize(' '.join(sentence), cv2.FONT_HERSHEY_DUPLEX, 1, 2)
+        text_width = text_size[0]
+        x = (width - text_width) // 2
+        cv2.putText(image, ' '.join(sentence), (x, height - 40),
+                    cv2.FONT_HERSHEY_DUPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
-            st.image(image, channels="BGR")
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        video_placeholder.image(image_rgb, channels="RGB")
 
-if __name__ == "__main__":
-    main()
+
+    cap.release()
+    cv2.destroyAllWindows()
